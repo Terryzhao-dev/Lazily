@@ -1,134 +1,77 @@
 # Lazily
 
-A workspace for **fast, context-aware predictive typing**. The flagship product is **Lazily** — a system-wide macOS app that lets you type as lazily as you want, then expands it on `.` into a clean sentence using an LLM that knows the text around your cursor.
+**Type as lazily as you like, press `.`, and get a clean sentence.** Lazily is a system-wide macOS app. Type a compressed, no-space version of a sentence in any app; on the full stop it expands into the full sentence, using a local pipeline first and an LLM that reads the text around your cursor when it needs to.
 
 ```
-type:     iwgotosch.
-get:      I want to go to school.
-
-type:     thedogranhome.
-get:      The dog ran home.
-
-type:     tdrh.
-get:      The dog ran home.
+type:  iwgotosch.       →  I want to go to school.
+type:  thedogranhome.   →  The dog ran home.
+type:  tdrh.            →  The dog ran home.
 ```
 
-Normal writing with spaces is never touched. The repo also contains earlier predictive-keyboard prototypes (iOS, Node/React web, n-gram beam search) that informed Lazily.
+The shorthand is flexible: first letters, first two letters, partial words or whole words run together. Normal writing with spaces is never touched.
 
-## What's in this repo
+> **Status (May 2026):** working prototype on macOS 13+, with a 100+ case evaluation set for when it should and shouldn't expand. Not yet signed or notarised for distribution.
 
-| Folder | What it is | Status |
-| --- | --- | --- |
-| **[`ShorthandMac/`](ShorthandMac/)** — **Lazily** | System-wide macOS app. Type a compressed no-space token (`tdrh`, `iwgotosch`, `thedogranhome`), press `.`, and an AI infers word boundaries / missing words / grammar to expand it into a clean sentence. Floating panel with alternatives + Undo. CGEventTap + Accessibility API, OpenAI-compatible AI backend (xAI / MiniMax / Groq / DeepSeek). | Active |
-| **[`edge/`](edge/)** | TS/Node + React prototype. Prefix-based predictive keyboard backend + web UI. Beam search over a 600-word dictionary, bigrams/trigrams per domain, JSON-persisted correction memory, MiniMax adapter, backslash key correction. | Active |
-| **[`edge-dashboard/`](edge-dashboard/)** | Native macOS SwiftUI dashboard for the Edge backend. Live predict, AI completions panel, corrections log, backend status. XcodeGen-generated project. | Active |
-| **[`edgetype/`](edgetype/)** | Earlier prototype using first/last-letter encoding (`te qk bn fx` → "the quick brown fox") instead of prefixes. Kept for reference and benchmarking. | Frozen |
-| **[`TranslatingKeyboard*/`](TranslatingKeyboard/)** | Original iOS keyboard extension that started this project — translates text inline as you type using the Claude API. Swift + UIKit + XcodeGen. | Maintenance |
-| **`Shared/`** | Swift code shared between the iOS app and its keyboard extension (App Group defaults, etc.). | — |
+## How it works
 
-## Quick start (Edge — the main thing)
+| Step | What happens | Code |
+|---|---|---|
+| Capture | A `CGEventTap` watches keystrokes system-wide and buffers the run of letters since the last space | `KeystrokeInterceptor.swift` |
+| Gate | On `.`, cheap checks skip real words, URLs, file paths, emails, code, shell commands and excluded apps (Terminal, IDEs, password managers) | `ExpansionGate.swift` |
+| Local first | Easy inputs are expanded on-device in microseconds: Viterbi word segmentation over a frequency dictionary, a Norvig-style spell corrector, shorthand expansion and grammar polish. No API call | `LocalPipeline.swift`, `WordSegmenter.swift`, `SpellCorrector.swift`, `GrammarPolisher.swift` |
+| Context | The Accessibility API reads up to 500 characters around the caret | `CaretLocator.swift` |
+| LLM | Harder inputs go to any OpenAI-compatible model (xAI, MiniMax, Groq, DeepSeek or OpenAI), with abbreviation hints and recent corrections as few-shot examples. Replies are structured JSON with alternatives and a confidence score | `MiniMaxClient.swift`, `AbbreviationHints.swift` |
+| Rerank | Candidates are re-scored against the typed letters, since models are over-confident when they drop letters | `LocalReranker.swift` |
+| Replace | The token is backspaced and the sentence injected; a floating panel offers alternatives and Undo | `SuggestionPanel.swift` |
+| Learn | Every accept and undo is stored and fed back into later requests | `CorrectionStore.swift` |
 
-Requirements: Node 20+, npm 10+.
+## Evaluation
 
-```bash
-cd edge
-npm install
-npm run dev
-```
+[`eval/`](eval/) holds 100+ labelled cases: 47 shorthand sentences that should expand, and cases that must not (single English words, URLs, file paths, emails, code, identifiers, shell commands and excluded apps). The runner reports gate accuracy, valid-JSON rate, letter-coverage match rate and median and p95 latency. The gate-only mode needs no API key.
 
-- Backend: `http://localhost:3002`
-- Frontend: `http://localhost:5174` (Vite proxies `/api/*` to the backend)
+## Earlier prototypes
 
-Open the frontend, type `i wa to ma a pr ma re ap`, and watch the prediction update in ~3 ms. Press `\` to cycle the most-uncertain word, `Shift+\` backward, `Alt+\` to cycle whole-sentence alternatives, `Cmd+\` to accept and teach.
+Lazily grew out of several experiments that are kept in this repo:
 
-Tests:
+| Folder | What it is |
+|---|---|
+| [`edge/`](edge/) | TypeScript/Node + React predictive keyboard. Prefix decoder with beam search over a dictionary, per-domain bigrams and trigrams, correction memory and an LLM reranker that never blocks: under 1 ms median decode, 9 Vitest suites |
+| [`edge-dashboard/`](edge-dashboard/) | Native SwiftUI dashboard for the Edge backend: live prediction, AI completions, corrections log |
+| [`edgetype/`](edgetype/) | First version, using first-and-last-letter encoding (`te qk bn fx` → "the quick brown fox") |
+| [`TranslatingKeyboard/`](TranslatingKeyboard/) | The iOS keyboard extension that started the project, translating text inline with the Claude API |
 
-```bash
-cd edge && npm test       # 9 Vitest suites
-cd edge && npm run bench  # latency benchmarks
-```
+## Build and run
 
-## Quick start (macOS Dashboard)
+Requires macOS 13+ and an API key for an OpenAI-compatible provider.
 
-Requirements: macOS 13+, Xcode 15+, [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+1. Create `.env` in the repo root:
 
-```bash
-cd edge-dashboard
-bash setup.sh             # installs xcodegen via Homebrew if needed, then generates the project
-open EdgeDashboard.xcodeproj
-```
+   ```
+   MINIMAX_API_KEY=<your key>
+   MINIMAX_API_BASE_URL=https://api.x.ai/v1
+   MINIMAX_MODEL=grok-4-fast-non-reasoning
+   MINIMAX_TIMEOUT_MS=5000
+   ```
 
-In Xcode: set your Team in Signing & Capabilities, then `Cmd+R`. The dashboard talks to the backend on `http://localhost:3002` by default — change in Settings if you've remapped the port.
+2. Build and run from the repo root:
 
-## Architecture at a glance
+   ```bash
+   SDK=$(xcrun --sdk macosx --show-sdk-path)
+   swiftc -O -sdk "$SDK" -target arm64-apple-macos13 \
+     ShorthandMac/*.swift Shared/Services/*.swift Shared/Utilities/*.swift \
+     -framework AppKit -framework SwiftUI -framework ApplicationServices \
+     -o ~/Lazily
+   ~/Lazily
+   ```
 
-```
-┌────────────────────┐      ┌──────────────────────────────────────────────┐
-│  Web UI (Vite)     │◀────▶│  Edge backend  (edge/backend)                │
-│  edge/frontend     │      │                                              │
-│  port 5174         │      │  ┌──────────────────────────────────────┐   │
-└────────────────────┘      │  │  Decoder                              │   │
-                            │  │   tokenParser → candidateGenerator    │   │
-┌────────────────────┐      │  │     → beamSearch                      │   │
-│  macOS Dashboard   │◀────▶│  │       (scorer + phraseMemory +        │   │
-│  edge-dashboard    │      │  │        correctionMemory + confidence) │   │
-│  SwiftUI           │      │  └──────────────────────────────────────┘   │
-└────────────────────┘      │                                              │
-                            │  AI: MiniMax adapter (LLMClient interface)   │
-                            │  Storage: backend/data/corrections.json      │
-                            │  port 3002                                   │
-                            └──────────────────────────────────────────────┘
-```
+3. Grant Accessibility permission when prompted (System Settings > Privacy & Security > Accessibility), switch Lazily to **Active** and try `iwgotosch.` in Notes.
 
-Key properties:
+More detail: [`ShorthandMac/README.md`](ShorthandMac/README.md) for the app and [`eval/README.md`](eval/README.md) for the evaluation.
 
-- **Local-first.** Predictions return in ≤30 ms — AI is reranking, never blocking. Hard 200 ms timeout on the MiniMax call; on timeout you keep the local result.
-- **Modular decoder.** Every stage is independently testable. See [`edge/backend/src/decoder/`](edge/backend/src/decoder/).
-- **Adapter pattern for AI.** Implement [`LLMClient`](edge/backend/src/ai/llmClient.ts) to plug in a different provider; the routes don't care.
-- **Six domains** — `general`, `school`, `business`, `coding`, `texting`, `research` — weight different phrase tables.
-- **Keyboard-first correction.** `\` and its modifiers cover every UI affordance.
-
-## Compressed-input grammar
-
-| token | meaning |
-| --- | --- |
-| `t` | 1-letter prefix — any word starting with T |
-| `th` | 2-letter prefix — any word starting with TH |
-| `the` | literal word (3+ letters) |
-| `a`, `i` | literal one-letter words |
-| `.` `,` `!` `?` | punctuation, kept attached to the previous word |
-
-For deeper docs on the decoder, scoring, MiniMax wiring, and the future-IME roadmap, see [edge/README.md](edge/README.md). The dashboard is documented at [edge-dashboard/README.md](edge-dashboard/README.md).
-
-## Development workflow
-
-The pieces are designed to evolve independently:
-
-- **Decoder tweaks** → edit files in [`edge/backend/src/decoder/`](edge/backend/src/decoder/), `cd edge && npm test`.
-- **UI changes** → [`edge/frontend/src/`](edge/frontend/src/), hot-reloaded by Vite.
-- **Dashboard UI** → [`edge-dashboard/EdgeDashboard/Views/`](edge-dashboard/EdgeDashboard/Views/), rebuild in Xcode.
-- **Bigger pivots** → write the plan in `edge/HANDOFF.md` and hand off to a separate Claude Code session; the most recent example is the first-letter+last-letter → prefix encoding migration documented there.
-
-## Secrets and gitignore
-
-- **Never commit `.env`.** Put your MiniMax key in [`edge/backend/.env`](edge/backend/.env) (create it from `.env.example`). The rule `.env` in [`edge/.gitignore`](edge/.gitignore) covers it at any depth.
-- Tighten file permissions on the env file if you share this Mac with anyone:
-  ```bash
-  chmod 600 edge/backend/.env
-  ```
-- Never paste API keys into chat, screenshots, or commit messages. Rotate immediately if leaked.
-
-## Status
-
-- ✅ Edge backend: prefix-based decoder, MiniMax adapter, correction memory with prefix-successor boosts, 9 Vitest suites passing, `<1 ms` median decode for typical sentences.
-- ✅ Edge web frontend: ghost-text prediction, AI-completions panel, backslash correction, domain selector.
-- ✅ macOS dashboard: live predict, corrections log, backend status, MiniMax toggle. Builds cleanly under `xcodebuild`.
-- 🚧 iOS Translating Keyboard: the original keyboard extension lives separately from Edge and is on maintenance only — it does inline translation, not predictive autocomplete.
+**Stack:** Swift, SwiftUI, AppKit, CGEventTap, Accessibility API; TypeScript, Node.js, React, Vite, Vitest; OpenAI-compatible LLM APIs.
 
 ## Roadmap
 
-- Wrap the Edge decoder in a macOS **Input Method Kit** extension so it can drive the system text input directly, with the dashboard becoming its settings & teaching surface.
-- TSF wrapper for Windows.
-- Bundle a real frequency corpus (SUBTLEX or Google Books unigrams) at `edge/backend/data/words.txt`.
-- Personal-vocabulary learning from full typing history, not only corrections.
-- On-device LLM via Core ML so the AI rerank works offline.
+- Run as a macOS Input Method Kit extension instead of an event tap
+- On-device model through Core ML so expansion works offline
+- Signed and notarised release
