@@ -22,7 +22,7 @@ Coverage:
 ## Building the runner
 
 ```bash
-cd "/Users/andyzhao/Translating keyboard"
+cd Lazily   # repo root
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 swiftc -O -sdk "$SDK" -target arm64-apple-macos13 \
   eval/runner.swift \

@@ -105,7 +105,7 @@ struct ContentView: View {
                 }
                 Text(state.aiEnabled
                      ? "When you press “.” on a compressed shorthand token, the AI infers word boundaries, missing connectors, capitalization and grammar — using up to 500 characters around your cursor as context."
-                     : "Add MINIMAX_API_KEY to /Users/andyzhao/Translating\u{00A0}keyboard/.env, then quit and relaunch.")
+                     : "Add MINIMAX_API_KEY to .env in the repo root (or ~/.shorthand-mac.env), then quit and relaunch.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

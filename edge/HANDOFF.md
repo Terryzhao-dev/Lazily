@@ -4,7 +4,7 @@ Paste everything below into the new terminal. It's self-contained — the new se
 
 ---
 
-I'm continuing a project at `/Users/andyzhao/Translating keyboard/`. Read `edge/README.md` and `edge-dashboard/README.md` first; full architecture is there. Then read this whole brief before changing anything.
+I'm continuing a project in this repo. Read `edge/README.md` and `edge-dashboard/README.md` first; full architecture is there. Then read this whole brief before changing anything.
 
 ## What I want changed
 

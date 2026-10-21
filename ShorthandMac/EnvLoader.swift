@@ -49,7 +49,7 @@ enum EnvLoader {
             paths.append(URL(fileURLWithPath: override))
         }
         // Workspace root .env — same file used by Edge.
-        paths.append(URL(fileURLWithPath: "/Users/andyzhao/Translating keyboard/.env"))
+        paths.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".env"))
         // Per-user fallback.
         let home = FileManager.default.homeDirectoryForCurrentUser
         paths.append(home.appendingPathComponent(".shorthand-mac.env"))
